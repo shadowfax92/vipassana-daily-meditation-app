@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 
 interface Metadata {
-  intros: {
+  chanting: {
     '2min': { file: string; duration: number }[]
     '5min': { file: string; duration: number }[]
     '10min': { file: string; duration: number }[]
@@ -11,10 +11,17 @@ interface Metadata {
   gong: string
 }
 
-type IntroDuration = '2min' | '5min' | '10min'
+type ChantingDuration = '2min' | '5min' | '10min' | 'none'
 type MeditationDuration = 30 | 60 | 90 | 120
 
-type SessionPhase = 'idle' | 'intro' | 'meditation' | 'outro' | 'gong' | 'complete'
+type SessionPhase =
+  | 'idle'
+  | 'gong'
+  | 'intro'
+  | 'meditation'
+  | 'outro_chanting'
+  | 'outro'
+  | 'complete'
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
@@ -24,22 +31,23 @@ function formatTime(seconds: number): string {
 
 function App() {
   const [metadata, setMetadata] = useState<Metadata | null>(null)
-  const [introDuration, setIntroDuration] = useState<IntroDuration>('5min')
-  const [meditationDuration, setMeditationDuration] = useState<MeditationDuration>(30)
-  const [enableGong, setEnableGong] = useState(true)
 
+  // Settings
+  const [enableGong, setEnableGong] = useState(false)
+  const [introDuration, setIntroDuration] = useState<ChantingDuration>('5min')
+  const [meditationDuration, setMeditationDuration] = useState<MeditationDuration>(30)
+  const [outroDuration, setOutroDuration] = useState<ChantingDuration>('5min')
+
+  // Session state
   const [phase, setPhase] = useState<SessionPhase>('idle')
   const [timeRemaining, setTimeRemaining] = useState(0)
-  const [currentIntro, setCurrentIntro] = useState<string | null>(null)
-
-  // Audio progress tracking
+  const [currentChanting, setCurrentChanting] = useState<string | null>(null)
   const [audioProgress, setAudioProgress] = useState({ current: 0, duration: 0 })
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const timerRef = useRef<number | null>(null)
   const phaseRef = useRef<SessionPhase>('idle')
 
-  // Keep phaseRef in sync with phase state (for use in async callbacks)
   useEffect(() => {
     phaseRef.current = phase
   }, [phase])
@@ -110,96 +118,131 @@ function App() {
     }, 1000)
   }, [meditationDuration])
 
+  const getRandomChanting = useCallback((duration: ChantingDuration): string | null => {
+    if (!metadata || duration === 'none') return null
+    const chantings = metadata.chanting[duration]
+    if (!chantings.length) return null
+    return chantings[Math.floor(Math.random() * chantings.length)].file
+  }, [metadata])
+
   // Watch for timer completion
   useEffect(() => {
     if (phase === 'meditation' && timeRemaining === 0) {
-      setPhase('outro')
+      if (outroDuration !== 'none') {
+        const outroChant = getRandomChanting(outroDuration)
+        setCurrentChanting(outroChant)
+        setPhase('outro_chanting')
+      } else {
+        setPhase('outro')
+      }
     }
-  }, [phase, timeRemaining])
+  }, [phase, timeRemaining, outroDuration, getRandomChanting])
 
   // Handle phase transitions
   useEffect(() => {
-    if (phase === 'intro' && currentIntro) {
-      playAudio(`/audio/intro/${currentIntro}`)
-        .then(() => {
-          // Only transition if still in intro phase (handles skip race condition)
+    const handlePhaseTransition = async () => {
+      try {
+        if (phase === 'gong') {
+          await playAudio('/audio/gong.mp3')
+          if (phaseRef.current === 'gong') {
+            if (introDuration !== 'none') {
+              const introChant = getRandomChanting(introDuration)
+              setCurrentChanting(introChant)
+              setPhase('intro')
+            } else {
+              setPhase('meditation')
+              startMeditationTimer()
+            }
+          }
+        } else if (phase === 'intro' && currentChanting) {
+          await playAudio(`/audio/chanting/${currentChanting}`)
           if (phaseRef.current === 'intro') {
             setPhase('meditation')
             startMeditationTimer()
           }
-        })
-        .catch(err => {
-          console.error('Intro playback failed:', err)
-          // Only reset if still in intro phase
-          if (phaseRef.current === 'intro') {
-            setPhase('idle')
+        } else if (phase === 'outro_chanting' && currentChanting) {
+          await playAudio(`/audio/chanting/${currentChanting}`)
+          if (phaseRef.current === 'outro_chanting') {
+            setPhase('outro')
           }
-        })
-    } else if (phase === 'outro') {
-      playAudio('/audio/outro.webm')
-        .then(() => {
-          if (phaseRef.current === 'outro') {
-            if (enableGong) {
-              setPhase('gong')
-            } else {
-              setPhase('complete')
-            }
-          }
-        })
-        .catch(err => {
-          console.error('Outro playback failed:', err)
+        } else if (phase === 'outro') {
+          await playAudio('/audio/outro.webm')
           if (phaseRef.current === 'outro') {
             setPhase('complete')
           }
-        })
-    } else if (phase === 'gong') {
-      playAudio('/audio/gong.mp3')
-        .then(() => {
-          if (phaseRef.current === 'gong') {
-            setPhase('complete')
+        }
+      } catch (err) {
+        console.error('Playback failed:', err)
+        // Gracefully move to next phase on error
+        if (phaseRef.current === 'gong') {
+          if (introDuration !== 'none') {
+            const introChant = getRandomChanting(introDuration)
+            setCurrentChanting(introChant)
+            setPhase('intro')
+          } else {
+            setPhase('meditation')
+            startMeditationTimer()
           }
-        })
-        .catch(err => {
-          console.error('Gong playback failed:', err)
-          if (phaseRef.current === 'gong') {
-            setPhase('complete')
-          }
-        })
+        } else if (phaseRef.current === 'intro') {
+          setPhase('meditation')
+          startMeditationTimer()
+        } else if (phaseRef.current === 'outro_chanting') {
+          setPhase('outro')
+        } else if (phaseRef.current === 'outro') {
+          setPhase('complete')
+        }
+      }
     }
-  }, [phase, currentIntro, enableGong, playAudio, startMeditationTimer])
+
+    if (phase !== 'idle' && phase !== 'meditation' && phase !== 'complete') {
+      handlePhaseTransition()
+    }
+  }, [phase, currentChanting, introDuration, outroDuration, playAudio, startMeditationTimer, getRandomChanting])
 
   const startSession = () => {
     if (!metadata) return
 
-    const intros = metadata.intros[introDuration]
-    if (!intros.length) {
-      console.error('No intros available for selected duration')
-      return
+    if (enableGong) {
+      setPhase('gong')
+    } else if (introDuration !== 'none') {
+      const introChant = getRandomChanting(introDuration)
+      setCurrentChanting(introChant)
+      setPhase('intro')
+    } else {
+      setPhase('meditation')
+      startMeditationTimer()
     }
-
-    const randomIntro = intros[Math.floor(Math.random() * intros.length)]
-    setCurrentIntro(randomIntro.file)
-    setPhase('intro')
   }
 
   const stopSession = () => {
     cleanup()
     setPhase('idle')
     setTimeRemaining(0)
-    setCurrentIntro(null)
+    setCurrentChanting(null)
   }
 
-  const skipIntro = useCallback(() => {
+  const skipToMeditation = useCallback(() => {
     if (phase !== 'intro') return
     cleanup()
     setPhase('meditation')
     startMeditationTimer()
   }, [phase, cleanup, startMeditationTimer])
 
-  const isSessionActive = phase !== 'idle' && phase !== 'complete'
+  const skipOutroChanting = useCallback(() => {
+    if (phase !== 'outro_chanting') return
+    cleanup()
+    setPhase('outro')
+  }, [phase, cleanup])
 
-  // Calculate audio time remaining (for intro, outro, gong phases)
+  const isSessionActive = phase !== 'idle' && phase !== 'complete'
   const audioTimeRemaining = Math.max(0, Math.ceil(audioProgress.duration - audioProgress.current))
+
+  // Check available chanting options
+  const hasChanting = (dur: ChantingDuration) => {
+    if (dur === 'none') return true
+    if (!metadata) return false
+    return metadata.chanting[dur]?.length > 0
+  }
 
   return (
     <div className="app">
@@ -211,13 +254,31 @@ function App() {
       {phase === 'idle' && (
         <div className="setup">
           <section className="option-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={enableGong}
+                onChange={e => setEnableGong(e.target.checked)}
+              />
+              Play gong at start
+            </label>
+          </section>
+
+          <section className="option-group">
             <h2>Intro Chanting</h2>
             <div className="button-group">
-              {(['2min', '5min', '10min'] as IntroDuration[]).map(dur => (
+              <button
+                className={introDuration === 'none' ? 'selected' : ''}
+                onClick={() => setIntroDuration('none')}
+              >
+                None
+              </button>
+              {(['2min', '5min', '10min'] as const).map(dur => (
                 <button
                   key={dur}
                   className={introDuration === dur ? 'selected' : ''}
                   onClick={() => setIntroDuration(dur)}
+                  disabled={!hasChanting(dur)}
                 >
                   {dur.replace('min', ' min')}
                 </button>
@@ -241,14 +302,25 @@ function App() {
           </section>
 
           <section className="option-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={enableGong}
-                onChange={e => setEnableGong(e.target.checked)}
-              />
-              Play gong at the end
-            </label>
+            <h2>Outro Chanting</h2>
+            <div className="button-group">
+              <button
+                className={outroDuration === 'none' ? 'selected' : ''}
+                onClick={() => setOutroDuration('none')}
+              >
+                None
+              </button>
+              {(['2min', '5min', '10min'] as const).map(dur => (
+                <button
+                  key={dur}
+                  className={outroDuration === dur ? 'selected' : ''}
+                  onClick={() => setOutroDuration(dur)}
+                  disabled={!hasChanting(dur)}
+                >
+                  {dur.replace('min', ' min')}
+                </button>
+              ))}
+            </div>
           </section>
 
           <button
@@ -264,10 +336,11 @@ function App() {
       {isSessionActive && (
         <div className="session">
           <div className="phase-indicator">
+            {phase === 'gong' && '🔔 Starting Gong'}
             {phase === 'intro' && '🙏 Intro Chanting'}
             {phase === 'meditation' && '🧘 Meditation'}
-            {phase === 'outro' && '🙏 Closing Chanting'}
-            {phase === 'gong' && '🔔 Gong'}
+            {phase === 'outro_chanting' && '🙏 Outro Chanting'}
+            {phase === 'outro' && '🙏 Closing'}
           </div>
 
           <div className="timer">
@@ -282,16 +355,17 @@ function App() {
                   {audioProgress.duration > 0 ? formatTime(audioTimeRemaining) : '--:--'}
                 </div>
                 <div className="time-label">
+                  {phase === 'gong' && 'gong'}
                   {phase === 'intro' && 'intro remaining'}
-                  {phase === 'outro' && 'closing remaining'}
-                  {phase === 'gong' && 'gong remaining'}
+                  {phase === 'outro_chanting' && 'outro remaining'}
+                  {phase === 'outro' && 'closing'}
                 </div>
               </>
             )}
           </div>
 
-          {/* Progress bar for audio phases */}
-          {(phase === 'intro' || phase === 'outro' || phase === 'gong') && audioProgress.duration > 0 && (
+          {(phase === 'gong' || phase === 'intro' || phase === 'outro_chanting' || phase === 'outro') &&
+           audioProgress.duration > 0 && (
             <div className="progress-bar-container">
               <div
                 className="progress-bar"
@@ -302,8 +376,13 @@ function App() {
 
           <div className="session-actions">
             {phase === 'intro' && (
-              <button className="skip-button" onClick={skipIntro}>
-                Skip Intro →
+              <button className="skip-button" onClick={skipToMeditation}>
+                Skip to Meditation →
+              </button>
+            )}
+            {phase === 'outro_chanting' && (
+              <button className="skip-button" onClick={skipOutroChanting}>
+                Skip to Closing →
               </button>
             )}
             <button className="stop-button" onClick={stopSession}>
@@ -318,7 +397,8 @@ function App() {
           <div className="complete-message">
             <span className="complete-icon">✨</span>
             <h2>Session Complete</h2>
-            <p>May all beings be happy.</p>
+            <p>Bhavatu Sabba Mangalam</p>
+            <p className="translation">May all beings be happy</p>
           </div>
           <button className="start-button" onClick={() => setPhase('idle')}>
             New Session

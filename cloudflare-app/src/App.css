@@ -242,8 +242,13 @@ header .subtitle {
 .complete-message p {
   font-size: 1.1rem;
   color: #718096;
-  margin: 0;
+  margin: 0.25rem 0 0;
   font-style: italic;
+}
+
+.complete-message .translation {
+  font-size: 0.95rem;
+  color: #a0aec0;
 }
 
 /* Dark mode support */
