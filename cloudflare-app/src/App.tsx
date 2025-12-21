@@ -280,15 +280,18 @@ function App() {
     <div className="app">
       <header>
         <h1>Vipassana Timer</h1>
-        <p className="subtitle">Meditation with S.N. Goenka's chantings</p>
-        <a
-          className="github-link"
-          href="https://github.com/shadowfax92/vipassana-daily-meditation-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          GitHub
-        </a>
+        <p className="subtitle">
+          Meditation with S.N. Goenka's chantings
+          <span className="separator">·</span>
+          <a
+            className="source-link"
+            href="https://github.com/shadowfax92/vipassana-daily-meditation-app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Source
+          </a>
+        </p>
       </header>
 
       {phase === 'idle' && (
