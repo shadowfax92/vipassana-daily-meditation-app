@@ -1,0 +1,50 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+venv/
+
+# Dependencies
+node_modules/
+
+# Audio source files (large, not for git)
+sample/*.mp3
+sample/*.webm
+sample/*.wav
+sample/*.m4a
+
+# Analysis outputs (regenerable)
+**/analysis/
+
+# Generated chunks (will be deployed separately to R2/CDN)
+**/chunks/
+
+# Build outputs
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# uv
+uv.lock
+
+# Logs
+*.log
+npm-debug.log*

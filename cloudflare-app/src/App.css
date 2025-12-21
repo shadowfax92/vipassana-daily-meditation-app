@@ -1,0 +1,283 @@
+* {
+  box-sizing: border-box;
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+header h1 {
+  font-size: 2rem;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  margin: 0 0 0.5rem;
+  color: #2d3748;
+}
+
+header .subtitle {
+  font-size: 0.9rem;
+  color: #718096;
+  margin: 0;
+}
+
+/* Setup Screen */
+.setup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.option-group {
+  text-align: center;
+}
+
+.option-group h2 {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #718096;
+  margin: 0 0 0.75rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.button-group button {
+  padding: 0.75rem 1.25rem;
+  border: 2px solid #e2e8f0;
+  background: white;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: #4a5568;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+}
+
+.button-group button:hover {
+  border-color: #cbd5e0;
+  background: #f7fafc;
+}
+
+.button-group button.selected {
+  border-color: #667eea;
+  background: #667eea;
+  color: white;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  color: #4a5568;
+  cursor: pointer;
+}
+
+.checkbox-label input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #667eea;
+}
+
+.start-button {
+  margin-top: auto;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.start-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+}
+
+.start-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Session Screen */
+.session {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.phase-indicator {
+  font-size: 1.5rem;
+  color: #4a5568;
+  text-align: center;
+}
+
+.timer {
+  text-align: center;
+}
+
+.time-display {
+  font-size: 5rem;
+  font-weight: 200;
+  font-variant-numeric: tabular-nums;
+  color: #2d3748;
+  line-height: 1;
+}
+
+.time-label {
+  font-size: 1rem;
+  color: #a0aec0;
+  margin-top: 0.5rem;
+}
+
+.stop-button {
+  margin-top: 2rem;
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: 2px solid #e53e3e;
+  border-radius: 8px;
+  color: #e53e3e;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stop-button:hover {
+  background: #e53e3e;
+  color: white;
+}
+
+/* Complete Screen */
+.complete {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.complete-message {
+  text-align: center;
+}
+
+.complete-icon {
+  font-size: 4rem;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.complete-message h2 {
+  font-size: 1.75rem;
+  font-weight: 400;
+  color: #2d3748;
+  margin: 0 0 0.5rem;
+}
+
+.complete-message p {
+  font-size: 1.1rem;
+  color: #718096;
+  margin: 0;
+  font-style: italic;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .app {
+    background: #1a202c;
+  }
+
+  header h1 {
+    color: #f7fafc;
+  }
+
+  header .subtitle {
+    color: #a0aec0;
+  }
+
+  .option-group h2 {
+    color: #a0aec0;
+  }
+
+  .button-group button {
+    border-color: #4a5568;
+    background: #2d3748;
+    color: #e2e8f0;
+  }
+
+  .button-group button:hover {
+    border-color: #718096;
+    background: #4a5568;
+  }
+
+  .button-group button.selected {
+    border-color: #667eea;
+    background: #667eea;
+    color: white;
+  }
+
+  .checkbox-label {
+    color: #e2e8f0;
+  }
+
+  .phase-indicator {
+    color: #e2e8f0;
+  }
+
+  .time-display {
+    color: #f7fafc;
+  }
+
+  .time-label {
+    color: #718096;
+  }
+
+  .complete-message h2 {
+    color: #f7fafc;
+  }
+
+  .complete-message p {
+    color: #a0aec0;
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 400px) {
+  .button-group button {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    min-width: 70px;
+  }
+
+  .time-display {
+    font-size: 4rem;
+  }
+
+  header h1 {
+    font-size: 1.75rem;
+  }
+}

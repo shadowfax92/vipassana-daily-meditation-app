@@ -1,0 +1,12 @@
+[project]
+name = "vipassana-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "librosa>=0.11.0",
+    "matplotlib>=3.10.8",
+    "numpy>=2.3.5",
+    "pydub>=0.25.1",
+]
