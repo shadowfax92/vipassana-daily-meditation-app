@@ -281,6 +281,16 @@ function App() {
       <header>
         <h1>Vipassana Timer</h1>
         <p className="subtitle">Meditation with S.N. Goenka's chantings</p>
+        <a
+          className="github-button"
+          href="https://github.com/shadowfax92/vipassana-daily-meditation-"
+          data-color-scheme="no-preference: light; light: light; dark: dark;"
+          data-size="large"
+          data-show-count="true"
+          aria-label="Star shadowfax92/vipassana-daily-meditation- on GitHub"
+        >
+          Star
+        </a>
       </header>
 
       {phase === 'idle' && (
