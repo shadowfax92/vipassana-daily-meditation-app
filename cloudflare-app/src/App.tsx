@@ -32,8 +32,17 @@ function App() {
   const [timeRemaining, setTimeRemaining] = useState(0)
   const [currentIntro, setCurrentIntro] = useState<string | null>(null)
 
+  // Audio progress tracking
+  const [audioProgress, setAudioProgress] = useState({ current: 0, duration: 0 })
+
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const timerRef = useRef<number | null>(null)
+  const phaseRef = useRef<SessionPhase>('idle')
+
+  // Keep phaseRef in sync with phase state (for use in async callbacks)
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
 
   // Load metadata on mount
   useEffect(() => {
@@ -50,8 +59,13 @@ function App() {
     }
     if (audioRef.current) {
       audioRef.current.pause()
+      audioRef.current.onloadedmetadata = null
+      audioRef.current.ontimeupdate = null
+      audioRef.current.onended = null
+      audioRef.current.onerror = null
       audioRef.current = null
     }
+    setAudioProgress({ current: 0, duration: 0 })
   }, [])
 
   const playAudio = useCallback((src: string): Promise<void> => {
@@ -59,7 +73,23 @@ function App() {
       cleanup()
       const audio = new Audio(src)
       audioRef.current = audio
-      audio.onended = () => resolve()
+
+      audio.onloadedmetadata = () => {
+        setAudioProgress(prev => ({ ...prev, duration: audio.duration }))
+      }
+
+      audio.ontimeupdate = () => {
+        setAudioProgress({
+          current: audio.currentTime,
+          duration: audio.duration || 0
+        })
+      }
+
+      audio.onended = () => {
+        setAudioProgress({ current: 0, duration: 0 })
+        resolve()
+      }
+
       audio.onerror = () => reject(new Error(`Failed to play ${src}`))
       audio.play().catch(reject)
     })
@@ -92,32 +122,48 @@ function App() {
     if (phase === 'intro' && currentIntro) {
       playAudio(`/audio/intro/${currentIntro}`)
         .then(() => {
-          setPhase('meditation')
-          startMeditationTimer()
+          // Only transition if still in intro phase (handles skip race condition)
+          if (phaseRef.current === 'intro') {
+            setPhase('meditation')
+            startMeditationTimer()
+          }
         })
         .catch(err => {
           console.error('Intro playback failed:', err)
-          setPhase('idle')
+          // Only reset if still in intro phase
+          if (phaseRef.current === 'intro') {
+            setPhase('idle')
+          }
         })
     } else if (phase === 'outro') {
       playAudio('/audio/outro.webm')
         .then(() => {
-          if (enableGong) {
-            setPhase('gong')
-          } else {
-            setPhase('complete')
+          if (phaseRef.current === 'outro') {
+            if (enableGong) {
+              setPhase('gong')
+            } else {
+              setPhase('complete')
+            }
           }
         })
         .catch(err => {
           console.error('Outro playback failed:', err)
-          setPhase('complete')
+          if (phaseRef.current === 'outro') {
+            setPhase('complete')
+          }
         })
     } else if (phase === 'gong') {
       playAudio('/audio/gong.mp3')
-        .then(() => setPhase('complete'))
+        .then(() => {
+          if (phaseRef.current === 'gong') {
+            setPhase('complete')
+          }
+        })
         .catch(err => {
           console.error('Gong playback failed:', err)
-          setPhase('complete')
+          if (phaseRef.current === 'gong') {
+            setPhase('complete')
+          }
         })
     }
   }, [phase, currentIntro, enableGong, playAudio, startMeditationTimer])
@@ -143,7 +189,17 @@ function App() {
     setCurrentIntro(null)
   }
 
+  const skipIntro = useCallback(() => {
+    if (phase !== 'intro') return
+    cleanup()
+    setPhase('meditation')
+    startMeditationTimer()
+  }, [phase, cleanup, startMeditationTimer])
+
   const isSessionActive = phase !== 'idle' && phase !== 'complete'
+
+  // Calculate audio time remaining (for intro, outro, gong phases)
+  const audioTimeRemaining = Math.max(0, Math.ceil(audioProgress.duration - audioProgress.current))
 
   return (
     <div className="app">
@@ -214,32 +270,46 @@ function App() {
             {phase === 'gong' && '🔔 Gong'}
           </div>
 
-          {phase === 'meditation' && (
-            <div className="timer">
-              <div className="time-display">{formatTime(timeRemaining)}</div>
-              <div className="time-label">remaining</div>
+          <div className="timer">
+            {phase === 'meditation' ? (
+              <>
+                <div className="time-display">{formatTime(timeRemaining)}</div>
+                <div className="time-label">remaining</div>
+              </>
+            ) : (
+              <>
+                <div className="time-display">
+                  {audioProgress.duration > 0 ? formatTime(audioTimeRemaining) : '--:--'}
+                </div>
+                <div className="time-label">
+                  {phase === 'intro' && 'intro remaining'}
+                  {phase === 'outro' && 'closing remaining'}
+                  {phase === 'gong' && 'gong remaining'}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Progress bar for audio phases */}
+          {(phase === 'intro' || phase === 'outro' || phase === 'gong') && audioProgress.duration > 0 && (
+            <div className="progress-bar-container">
+              <div
+                className="progress-bar"
+                style={{ width: `${(audioProgress.current / audioProgress.duration) * 100}%` }}
+              />
             </div>
           )}
 
-          {phase === 'intro' && (
-            <div className="timer">
-              <div className="time-display">🎵</div>
-              <div className="time-label">Playing intro chanting...</div>
-            </div>
-          )}
-
-          {(phase === 'outro' || phase === 'gong') && (
-            <div className="timer">
-              <div className="time-display">🎵</div>
-              <div className="time-label">
-                {phase === 'outro' ? 'Playing closing chanting...' : 'Playing gong...'}
-              </div>
-            </div>
-          )}
-
-          <button className="stop-button" onClick={stopSession}>
-            Stop Session
-          </button>
+          <div className="session-actions">
+            {phase === 'intro' && (
+              <button className="skip-button" onClick={skipIntro}>
+                Skip Intro →
+              </button>
+            )}
+            <button className="stop-button" onClick={stopSession}>
+              Stop Session
+            </button>
+          </div>
         </div>
       )}
 

@@ -154,14 +154,55 @@ header .subtitle {
   margin-top: 0.5rem;
 }
 
+/* Progress bar */
+.progress-bar-container {
+  width: 100%;
+  max-width: 300px;
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+/* Session action buttons */
+.session-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.skip-button {
+  padding: 0.6rem 1.25rem;
+  background: transparent;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  color: #667eea;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.skip-button:hover {
+  background: #667eea;
+  color: white;
+}
+
 .stop-button {
-  margin-top: 2rem;
-  padding: 0.75rem 1.5rem;
+  padding: 0.6rem 1.25rem;
   background: transparent;
   border: 2px solid #e53e3e;
   border-radius: 8px;
   color: #e53e3e;
-  font-size: 1rem;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -262,6 +303,20 @@ header .subtitle {
 
   .complete-message p {
     color: #a0aec0;
+  }
+
+  .progress-bar-container {
+    background: #4a5568;
+  }
+
+  .skip-button {
+    border-color: #667eea;
+    color: #a3bffa;
+  }
+
+  .skip-button:hover {
+    background: #667eea;
+    color: white;
   }
 }
 
