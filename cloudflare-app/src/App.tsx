@@ -47,6 +47,7 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const timerRef = useRef<number | null>(null)
   const phaseRef = useRef<SessionPhase>('idle')
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null)
 
   useEffect(() => {
     phaseRef.current = phase
@@ -59,6 +60,48 @@ function App() {
       .then(data => setMetadata(data))
       .catch(err => console.error('Failed to load metadata:', err))
   }, [])
+
+  // Wake Lock management - keeps screen on during session
+  const requestWakeLock = useCallback(async () => {
+    if (!('wakeLock' in navigator)) {
+      console.log('Wake Lock API not supported')
+      return
+    }
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request('screen')
+      console.log('Wake Lock acquired')
+      wakeLockRef.current.addEventListener('release', () => {
+        console.log('Wake Lock released')
+      })
+    } catch (err) {
+      console.log('Wake Lock request failed:', err)
+    }
+  }, [])
+
+  const releaseWakeLock = useCallback(() => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release()
+      wakeLockRef.current = null
+    }
+  }, [])
+
+  // Re-acquire wake lock when page becomes visible again (iOS releases it on hide)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && phaseRef.current !== 'idle' && phaseRef.current !== 'complete') {
+        requestWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [requestWakeLock])
+
+  // Release wake lock when session completes
+  useEffect(() => {
+    if (phase === 'complete') {
+      releaseWakeLock()
+    }
+  }, [phase, releaseWakeLock])
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
@@ -202,6 +245,8 @@ function App() {
   const startSession = () => {
     if (!metadata) return
 
+    requestWakeLock()
+
     if (enableGong) {
       setPhase('gong')
     } else if (introDuration !== 'none') {
@@ -216,6 +261,7 @@ function App() {
 
   const stopSession = () => {
     cleanup()
+    releaseWakeLock()
     setPhase('idle')
     setTimeRemaining(0)
     setCurrentChanting(null)
