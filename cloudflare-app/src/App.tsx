@@ -221,17 +221,49 @@ function App() {
     setCurrentChanting(null)
   }
 
-  const skipToMeditation = useCallback(() => {
+  // Skip functions for each phase
+  const skipGong = useCallback(() => {
+    if (phase !== 'gong') return
+    cleanup()
+    if (introDuration !== 'none') {
+      const introChant = getRandomChanting(introDuration)
+      setCurrentChanting(introChant)
+      setPhase('intro')
+    } else {
+      setPhase('meditation')
+      startMeditationTimer()
+    }
+  }, [phase, cleanup, introDuration, getRandomChanting, startMeditationTimer])
+
+  const skipIntro = useCallback(() => {
     if (phase !== 'intro') return
     cleanup()
     setPhase('meditation')
     startMeditationTimer()
   }, [phase, cleanup, startMeditationTimer])
 
+  const skipMeditation = useCallback(() => {
+    if (phase !== 'meditation') return
+    cleanup()
+    if (outroDuration !== 'none') {
+      const outroChant = getRandomChanting(outroDuration)
+      setCurrentChanting(outroChant)
+      setPhase('outro_chanting')
+    } else {
+      setPhase('outro')
+    }
+  }, [phase, cleanup, outroDuration, getRandomChanting])
+
   const skipOutroChanting = useCallback(() => {
     if (phase !== 'outro_chanting') return
     cleanup()
     setPhase('outro')
+  }, [phase, cleanup])
+
+  const skipOutro = useCallback(() => {
+    if (phase !== 'outro') return
+    cleanup()
+    setPhase('complete')
   }, [phase, cleanup])
 
   const isSessionActive = phase !== 'idle' && phase !== 'complete'
@@ -375,14 +407,29 @@ function App() {
           )}
 
           <div className="session-actions">
+            {phase === 'gong' && (
+              <button className="skip-button" onClick={skipGong}>
+                Skip Gong →
+              </button>
+            )}
             {phase === 'intro' && (
-              <button className="skip-button" onClick={skipToMeditation}>
+              <button className="skip-button" onClick={skipIntro}>
                 Skip to Meditation →
+              </button>
+            )}
+            {phase === 'meditation' && (
+              <button className="skip-button" onClick={skipMeditation}>
+                End Meditation →
               </button>
             )}
             {phase === 'outro_chanting' && (
               <button className="skip-button" onClick={skipOutroChanting}>
                 Skip to Closing →
+              </button>
+            )}
+            {phase === 'outro' && (
+              <button className="skip-button" onClick={skipOutro}>
+                Skip Closing →
               </button>
             )}
             <button className="stop-button" onClick={stopSession}>
