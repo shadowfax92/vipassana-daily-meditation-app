@@ -283,7 +283,7 @@ function App() {
         <p className="subtitle">Meditation with S.N. Goenka's chantings</p>
         <a
           className="github-link"
-          href="https://github.com/shadowfax92/vipassana-daily-meditation"
+          href="https://github.com/shadowfax92/vipassana-daily-meditation-app"
           target="_blank"
           rel="noopener noreferrer"
         >
