@@ -14,6 +14,7 @@
 header {
   text-align: center;
   margin-bottom: 2rem;
+  position: relative;
 }
 
 header h1 {
@@ -30,8 +31,23 @@ header .subtitle {
   margin: 0 0 0.75rem;
 }
 
-header .github-button {
-  display: inline-block;
+header .github-link {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 0.85rem;
+  color: #718096;
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+header .github-link:hover {
+  color: #4a5568;
+  border-color: #cbd5e0;
+  background: #f7fafc;
 }
 
 /* Setup Screen */
@@ -267,6 +283,17 @@ header .github-button {
 
   header .subtitle {
     color: #a0aec0;
+  }
+
+  header .github-link {
+    color: #a0aec0;
+    border-color: #4a5568;
+  }
+
+  header .github-link:hover {
+    color: #e2e8f0;
+    border-color: #718096;
+    background: #2d3748;
   }
 
   .option-group h2 {
