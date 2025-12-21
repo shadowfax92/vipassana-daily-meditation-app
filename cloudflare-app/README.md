@@ -1,73 +1,64 @@
-# React + TypeScript + Vite
+# Vipassana Daily Meditation Timer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A simple web app to recreate the Vipassana meditation experience at home — with S.N. Goenka's chantings, a meditation timer, and the traditional closing.
 
-Currently, two official plugins are available:
+**Live app:** [vipassana-daily-meditation.pages.dev](https://vipassana-daily-meditation.pages.dev)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## What is this?
 
-## React Compiler
+After attending a 10-day Vipassana course, I wanted a way to maintain the same feeling of meditating at a center — the opening chants to settle in, the silent meditation, and the closing chants. This app recreates that flow.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+All chantings are sourced from [Dhamma.org's public recordings](https://discourses.dhamma.org/recordings/chantings). I've chunked them into 2, 5, and 10-minute segments so you can choose how much chanting you want.
 
-## Expanding the ESLint configuration
+## How it works
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. **Optional Gong** — Start with a gong to signal the beginning
+2. **Intro Chanting** (optional, 2/5/10 min) — Opening chants from the morning sessions (Namo Tassa, taking refuge, etc.)
+3. **Meditation Timer** (30/60/90/120 min) — Silent meditation countdown
+4. **Outro Chanting** (optional, 2/5/10 min) — More chanting before the closing
+5. **Fixed Closing** — Traditional closing (Bhavatu Sabba Mangalam)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+**Skip any section you want.** Every phase has a skip button if you need to move on.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Project Structure
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+vipassana-app/
+├── cloudflare-app/     # The web app (React + Vite)
+├── chunking-app/       # Python scripts to process audio
+└── sample/             # Source audio files (not in git)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### cloudflare-app/
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+The frontend. A simple React app that:
+- Plays chanting audio files
+- Runs the meditation timer
+- Handles the session flow with skip buttons for each phase
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Deploy: `npm run build && npx wrangler pages deploy dist`
+
+### chunking-app/
+
+Python scripts to process the original Dhamma.org recordings:
+
+- **analyze_audio.py** — Detects silence boundaries in audio files using librosa
+- **extract_chunks.py** — Extracts 2/5/10 minute chunks from the *beginning* of each file (so you get authentic opening chants, not closing mantras)
+
+The chunks are extracted at natural pause points so the audio doesn't cut mid-chant.
+
+## Audio Sources
+
+All audio comes from [Dhamma.org Chantings](https://discourses.dhamma.org/recordings/chantings):
+- Morning Chantings (Day 1-11)
+- The fixed outro is a short closing blessing
+
+## Acknowledgments
+
+Deep gratitude to [Dhamma.org](https://www.dhamma.org) and the Vipassana organization for making these recordings freely available. The technique and teachings of S.N. Goenka have helped millions of people.
+
+This project is open source — feel free to use, modify, and share. May all beings be happy.
+
+---
+
+*Bhavatu Sabba Mangalam* 🙏
