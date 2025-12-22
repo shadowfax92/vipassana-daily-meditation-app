@@ -12,7 +12,7 @@ interface Metadata {
 }
 
 type ChantingDuration = '2min' | '5min' | '10min' | 'none'
-type MeditationDuration = 30 | 60 | 90 | 120
+type MeditationDuration = 20 | 30 | 60 | 90 | 120
 
 type SessionPhase =
   | 'idle'
@@ -378,7 +378,7 @@ function App() {
           <section className="option-group">
             <h2>Meditation Duration</h2>
             <div className="button-group">
-              {([30, 60, 90, 120] as MeditationDuration[]).map(dur => (
+              {([20, 30, 60, 90, 120] as MeditationDuration[]).map(dur => (
                 <button
                   key={dur}
                   className={meditationDuration === dur ? 'selected' : ''}
