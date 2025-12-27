@@ -662,6 +662,12 @@ function App() {
           </button>
         </div>
       )}
+
+      <footer className="app-footer">
+        <a href="https://daily-vipassana.app" target="_blank" rel="noopener noreferrer">
+          daily-vipassana.app
+        </a>
+      </footer>
     </div>
   )
 }
