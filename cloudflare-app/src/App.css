@@ -54,6 +54,75 @@ header .subtitle .source-link:hover {
   gap: 2rem;
 }
 
+/* Mode Selector - Segmented Control */
+.mode-selector {
+  display: flex;
+  background: #e2e8f0;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.mode-selector button {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #4a5568;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-selector button.selected {
+  background: white;
+  color: #667eea;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Instruction Cards for Guided Mode */
+.instruction-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.instruction-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1rem 1.25rem;
+  border: 2px solid #e2e8f0;
+  background: white;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.instruction-card:hover {
+  border-color: #cbd5e0;
+  background: #f7fafc;
+}
+
+.instruction-card.selected {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.instruction-card .card-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #2d3748;
+}
+
+.instruction-card .card-duration {
+  font-size: 0.85rem;
+  color: #718096;
+  margin-top: 0.25rem;
+}
+
 .option-group {
   text-align: center;
 }
@@ -350,6 +419,42 @@ header .subtitle .source-link:hover {
   .skip-button:hover {
     background: #667eea;
     color: white;
+  }
+
+  .mode-selector {
+    background: #2d3748;
+  }
+
+  .mode-selector button {
+    color: #a0aec0;
+  }
+
+  .mode-selector button.selected {
+    background: #4a5568;
+    color: #a3bffa;
+  }
+
+  .instruction-card {
+    border-color: #4a5568;
+    background: #2d3748;
+  }
+
+  .instruction-card:hover {
+    border-color: #718096;
+    background: #4a5568;
+  }
+
+  .instruction-card.selected {
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.15);
+  }
+
+  .instruction-card .card-title {
+    color: #f7fafc;
+  }
+
+  .instruction-card .card-duration {
+    color: #a0aec0;
   }
 }
 

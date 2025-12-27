@@ -7,12 +7,18 @@ interface Metadata {
     '5min': { file: string; duration: number }[]
     '10min': { file: string; duration: number }[]
   }
+  guided?: {
+    short: string
+    long: string
+  }
   outro: string
   gong: string
 }
 
+type SessionMode = 'custom' | 'guided'
 type ChantingDuration = '2min' | '5min' | '10min' | 'none'
 type MeditationDuration = 20 | 30 | 60 | 90 | 120
+type InstructionType = 'short' | 'long'
 
 type SessionPhase =
   | 'idle'
@@ -21,6 +27,7 @@ type SessionPhase =
   | 'meditation'
   | 'outro_chanting'
   | 'outro'
+  | 'guided_session'
   | 'complete'
 
 function formatTime(seconds: number): string {
@@ -32,11 +39,17 @@ function formatTime(seconds: number): string {
 function App() {
   const [metadata, setMetadata] = useState<Metadata | null>(null)
 
-  // Settings
+  // Mode selection
+  const [sessionMode, setSessionMode] = useState<SessionMode>('custom')
+
+  // Custom session settings
   const [enableGong, setEnableGong] = useState(false)
   const [introDuration, setIntroDuration] = useState<ChantingDuration>('5min')
   const [meditationDuration, setMeditationDuration] = useState<MeditationDuration>(30)
   const [outroDuration, setOutroDuration] = useState<ChantingDuration>('5min')
+
+  // Group sitting settings
+  const [instructionType, setInstructionType] = useState<InstructionType>('short')
 
   // Session state
   const [phase, setPhase] = useState<SessionPhase>('idle')
@@ -240,7 +253,10 @@ function App() {
         if (phase === 'gong') {
           await playAudio('/audio/gong.mp3')
           if (phaseRef.current === 'gong') {
-            if (introDuration !== 'none') {
+            if (sessionMode === 'guided') {
+              // After gong in guided mode, start the guided session
+              setPhase('guided_session')
+            } else if (introDuration !== 'none') {
               const introChant = getRandomChanting(introDuration)
               setCurrentChanting(introChant)
               setPhase('intro')
@@ -265,12 +281,22 @@ function App() {
           if (phaseRef.current === 'outro') {
             setPhase('complete')
           }
+        } else if (phase === 'guided_session') {
+          const audioFile = instructionType === 'short'
+            ? '/audio/guided/short.mp3'
+            : '/audio/guided/long.mp3'
+          await playAudio(audioFile)
+          if (phaseRef.current === 'guided_session') {
+            setPhase('complete')
+          }
         }
       } catch (err) {
         console.error('Playback failed:', err)
         // Gracefully move to next phase on error
         if (phaseRef.current === 'gong') {
-          if (introDuration !== 'none') {
+          if (sessionMode === 'guided') {
+            setPhase('guided_session')
+          } else if (introDuration !== 'none') {
             const introChant = getRandomChanting(introDuration)
             setCurrentChanting(introChant)
             setPhase('intro')
@@ -285,6 +311,8 @@ function App() {
           setPhase('outro')
         } else if (phaseRef.current === 'outro') {
           setPhase('complete')
+        } else if (phaseRef.current === 'guided_session') {
+          setPhase('complete')
         }
       }
     }
@@ -292,7 +320,7 @@ function App() {
     if (phase !== 'idle' && phase !== 'meditation' && phase !== 'complete') {
       handlePhaseTransition()
     }
-  }, [phase, currentChanting, introDuration, outroDuration, playAudio, startMeditationTimer, getRandomChanting])
+  }, [phase, currentChanting, sessionMode, introDuration, outroDuration, instructionType, playAudio, startMeditationTimer, getRandomChanting])
 
   const startSession = () => {
     if (!metadata) return
@@ -300,15 +328,25 @@ function App() {
     requestWakeLock()
     startSilentAudio()
 
-    if (enableGong) {
-      setPhase('gong')
-    } else if (introDuration !== 'none') {
-      const introChant = getRandomChanting(introDuration)
-      setCurrentChanting(introChant)
-      setPhase('intro')
+    if (sessionMode === 'guided') {
+      // Guided mode: optional gong → full guided session
+      if (enableGong) {
+        setPhase('gong')
+      } else {
+        setPhase('guided_session')
+      }
     } else {
-      setPhase('meditation')
-      startMeditationTimer()
+      // Custom session mode
+      if (enableGong) {
+        setPhase('gong')
+      } else if (introDuration !== 'none') {
+        const introChant = getRandomChanting(introDuration)
+        setCurrentChanting(introChant)
+        setPhase('intro')
+      } else {
+        setPhase('meditation')
+        startMeditationTimer()
+      }
     }
   }
 
@@ -326,7 +364,9 @@ function App() {
   const skipGong = useCallback(() => {
     if (phase !== 'gong') return
     cleanup()
-    if (introDuration !== 'none') {
+    if (sessionMode === 'guided') {
+      setPhase('guided_session')
+    } else if (introDuration !== 'none') {
       const introChant = getRandomChanting(introDuration)
       setCurrentChanting(introChant)
       setPhase('intro')
@@ -334,7 +374,7 @@ function App() {
       setPhase('meditation')
       startMeditationTimer()
     }
-  }, [phase, cleanup, introDuration, getRandomChanting, startMeditationTimer])
+  }, [phase, cleanup, sessionMode, introDuration, getRandomChanting, startMeditationTimer])
 
   const skipIntro = useCallback(() => {
     if (phase !== 'intro') return
@@ -363,6 +403,12 @@ function App() {
 
   const skipOutro = useCallback(() => {
     if (phase !== 'outro') return
+    cleanup()
+    setPhase('complete')
+  }, [phase, cleanup])
+
+  const skipGuidedSession = useCallback(() => {
+    if (phase !== 'guided_session') return
     cleanup()
     setPhase('complete')
   }, [phase, cleanup])
@@ -397,6 +443,23 @@ function App() {
 
       {phase === 'idle' && (
         <div className="setup">
+          {/* Mode Selector */}
+          <div className="mode-selector">
+            <button
+              className={sessionMode === 'custom' ? 'selected' : ''}
+              onClick={() => setSessionMode('custom')}
+            >
+              Custom
+            </button>
+            <button
+              className={sessionMode === 'guided' ? 'selected' : ''}
+              onClick={() => setSessionMode('guided')}
+            >
+              Guided
+            </button>
+          </div>
+
+          {/* Gong option - shared between modes */}
           <section className="option-group">
             <label className="checkbox-label">
               <input
@@ -408,64 +471,92 @@ function App() {
             </label>
           </section>
 
-          <section className="option-group">
-            <h2>Intro Chanting</h2>
-            <div className="button-group">
-              <button
-                className={introDuration === 'none' ? 'selected' : ''}
-                onClick={() => setIntroDuration('none')}
-              >
-                None
-              </button>
-              {(['2min', '5min', '10min'] as const).map(dur => (
-                <button
-                  key={dur}
-                  className={introDuration === dur ? 'selected' : ''}
-                  onClick={() => setIntroDuration(dur)}
-                  disabled={!hasChanting(dur)}
-                >
-                  {dur.replace('min', ' min')}
-                </button>
-              ))}
-            </div>
-          </section>
+          {/* Custom mode settings */}
+          {sessionMode === 'custom' && (
+            <>
+              <section className="option-group">
+                <h2>Intro Chanting</h2>
+                <div className="button-group">
+                  <button
+                    className={introDuration === 'none' ? 'selected' : ''}
+                    onClick={() => setIntroDuration('none')}
+                  >
+                    None
+                  </button>
+                  {(['2min', '5min', '10min'] as const).map(dur => (
+                    <button
+                      key={dur}
+                      className={introDuration === dur ? 'selected' : ''}
+                      onClick={() => setIntroDuration(dur)}
+                      disabled={!hasChanting(dur)}
+                    >
+                      {dur.replace('min', ' min')}
+                    </button>
+                  ))}
+                </div>
+              </section>
 
-          <section className="option-group">
-            <h2>Meditation Duration</h2>
-            <div className="button-group">
-              {([20, 30, 60, 90, 120] as MeditationDuration[]).map(dur => (
-                <button
-                  key={dur}
-                  className={meditationDuration === dur ? 'selected' : ''}
-                  onClick={() => setMeditationDuration(dur)}
-                >
-                  {dur} min
-                </button>
-              ))}
-            </div>
-          </section>
+              <section className="option-group">
+                <h2>Meditation Duration</h2>
+                <div className="button-group">
+                  {([20, 30, 60, 90, 120] as MeditationDuration[]).map(dur => (
+                    <button
+                      key={dur}
+                      className={meditationDuration === dur ? 'selected' : ''}
+                      onClick={() => setMeditationDuration(dur)}
+                    >
+                      {dur} min
+                    </button>
+                  ))}
+                </div>
+              </section>
 
-          <section className="option-group">
-            <h2>Outro Chanting</h2>
-            <div className="button-group">
-              <button
-                className={outroDuration === 'none' ? 'selected' : ''}
-                onClick={() => setOutroDuration('none')}
-              >
-                None
-              </button>
-              {(['2min', '5min', '10min'] as const).map(dur => (
+              <section className="option-group">
+                <h2>Outro Chanting</h2>
+                <div className="button-group">
+                  <button
+                    className={outroDuration === 'none' ? 'selected' : ''}
+                    onClick={() => setOutroDuration('none')}
+                  >
+                    None
+                  </button>
+                  {(['2min', '5min', '10min'] as const).map(dur => (
+                    <button
+                      key={dur}
+                      className={outroDuration === dur ? 'selected' : ''}
+                      onClick={() => setOutroDuration(dur)}
+                      disabled={!hasChanting(dur)}
+                    >
+                      {dur.replace('min', ' min')}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
+
+          {/* Guided mode settings */}
+          {sessionMode === 'guided' && (
+            <section className="option-group">
+              <h2>Instruction Type</h2>
+              <div className="instruction-cards">
                 <button
-                  key={dur}
-                  className={outroDuration === dur ? 'selected' : ''}
-                  onClick={() => setOutroDuration(dur)}
-                  disabled={!hasChanting(dur)}
+                  className={`instruction-card ${instructionType === 'short' ? 'selected' : ''}`}
+                  onClick={() => setInstructionType('short')}
                 >
-                  {dur.replace('min', ' min')}
+                  <span className="card-title">Short Instructions</span>
+                  <span className="card-duration">~1hr 6min</span>
                 </button>
-              ))}
-            </div>
-          </section>
+                <button
+                  className={`instruction-card ${instructionType === 'long' ? 'selected' : ''}`}
+                  onClick={() => setInstructionType('long')}
+                >
+                  <span className="card-title">Long Instructions</span>
+                  <span className="card-duration">~1hr 5min</span>
+                </button>
+              </div>
+            </section>
+          )}
 
           <button
             className="start-button"
@@ -485,6 +576,7 @@ function App() {
             {phase === 'meditation' && '🧘 Meditation'}
             {phase === 'outro_chanting' && '🙏 Outro Chanting'}
             {phase === 'outro' && '🙏 Closing'}
+            {phase === 'guided_session' && '🧘 Guided Session'}
           </div>
 
           <div className="timer">
@@ -503,12 +595,13 @@ function App() {
                   {phase === 'intro' && 'intro remaining'}
                   {phase === 'outro_chanting' && 'outro remaining'}
                   {phase === 'outro' && 'closing'}
+                  {phase === 'guided_session' && 'remaining'}
                 </div>
               </>
             )}
           </div>
 
-          {(phase === 'gong' || phase === 'intro' || phase === 'outro_chanting' || phase === 'outro') &&
+          {(phase === 'gong' || phase === 'intro' || phase === 'outro_chanting' || phase === 'outro' || phase === 'guided_session') &&
            audioProgress.duration > 0 && (
             <div className="progress-bar-container">
               <div
@@ -542,6 +635,11 @@ function App() {
             {phase === 'outro' && (
               <button className="skip-button" onClick={skipOutro}>
                 Skip Closing →
+              </button>
+            )}
+            {phase === 'guided_session' && (
+              <button className="skip-button" onClick={skipGuidedSession}>
+                End Session →
               </button>
             )}
             <button className="stop-button" onClick={stopSession}>
