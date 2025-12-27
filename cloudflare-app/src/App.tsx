@@ -48,6 +48,9 @@ function App() {
   const timerRef = useRef<number | null>(null)
   const phaseRef = useRef<SessionPhase>('idle')
   const wakeLockRef = useRef<WakeLockSentinel | null>(null)
+  const meditationTimerStartedRef = useRef(false)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const silentOscillatorRef = useRef<OscillatorNode | null>(null)
 
   useEffect(() => {
     phaseRef.current = phase
@@ -96,12 +99,58 @@ function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [requestWakeLock])
 
-  // Release wake lock when session completes
+  // Silent audio - keeps iOS audio context alive when screen locks
+  const startSilentAudio = useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      if (!AudioContextClass) {
+        console.log('AudioContext not supported')
+        return
+      }
+      const audioContext = new AudioContextClass()
+      audioContextRef.current = audioContext
+
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      // Nearly silent - just enough to keep audio context alive
+      gainNode.gain.value = 0.001
+      oscillator.frequency.value = 1
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      oscillator.start()
+
+      silentOscillatorRef.current = oscillator
+      console.log('Silent audio started')
+    } catch (err) {
+      console.log('Silent audio failed:', err)
+    }
+  }, [])
+
+  const stopSilentAudio = useCallback(() => {
+    if (silentOscillatorRef.current) {
+      try {
+        silentOscillatorRef.current.stop()
+      } catch {
+        // Ignore if already stopped
+      }
+      silentOscillatorRef.current = null
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    console.log('Silent audio stopped')
+  }, [])
+
+  // Release wake lock and stop silent audio when session completes
   useEffect(() => {
     if (phase === 'complete') {
       releaseWakeLock()
+      stopSilentAudio()
     }
-  }, [phase, releaseWakeLock])
+  }, [phase, releaseWakeLock, stopSilentAudio])
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
@@ -149,6 +198,7 @@ function App() {
   const startMeditationTimer = useCallback(() => {
     const totalSeconds = meditationDuration * 60
     setTimeRemaining(totalSeconds)
+    meditationTimerStartedRef.current = true
 
     timerRef.current = window.setInterval(() => {
       setTimeRemaining(prev => {
@@ -170,7 +220,9 @@ function App() {
 
   // Watch for timer completion
   useEffect(() => {
-    if (phase === 'meditation' && timeRemaining === 0) {
+    // Only transition if timer was actually started (prevents race condition on initial render)
+    if (phase === 'meditation' && timeRemaining === 0 && meditationTimerStartedRef.current) {
+      meditationTimerStartedRef.current = false
       if (outroDuration !== 'none') {
         const outroChant = getRandomChanting(outroDuration)
         setCurrentChanting(outroChant)
@@ -246,6 +298,7 @@ function App() {
     if (!metadata) return
 
     requestWakeLock()
+    startSilentAudio()
 
     if (enableGong) {
       setPhase('gong')
@@ -262,6 +315,8 @@ function App() {
   const stopSession = () => {
     cleanup()
     releaseWakeLock()
+    stopSilentAudio()
+    meditationTimerStartedRef.current = false
     setPhase('idle')
     setTimeRemaining(0)
     setCurrentChanting(null)
