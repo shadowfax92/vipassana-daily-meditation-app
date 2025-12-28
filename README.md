@@ -1,8 +1,8 @@
-# Vipassana Daily Meditation Timer
+# Daily Vipassana
 
 A simple web app to recreate the Vipassana meditation experience at home — with S.N. Goenka's chantings, a meditation timer, and the traditional closing.
 
-**Live app:** [vipassana-daily-meditation.pages.dev](https://vipassana-daily-meditation.pages.dev)
+**Live app:** [daily-vipassana.app](https://daily-vipassana.app)
 
 ## What is this?
 
