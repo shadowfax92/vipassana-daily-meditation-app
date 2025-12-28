@@ -426,7 +426,7 @@ function App() {
   return (
     <div className="app">
       <header>
-        <h1>Vipassana Timer</h1>
+        <h1>Daily Vipassana</h1>
         <p className="subtitle">
           Meditation with S.N. Goenka's chantings
           <span className="separator">·</span>
