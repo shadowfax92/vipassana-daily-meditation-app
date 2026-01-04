@@ -158,7 +158,9 @@ function App() {
             }, devSeconds * 1000)
           }
 
-          await audioControls.play(audioFile)
+          // Fade in over 30s for intro chanting
+          const playOptions = phase === 'intro' ? { fadeInSeconds: 30 } : undefined
+          await audioControls.play(audioFile, playOptions)
         }
 
         // Check phase hasn't changed during playback
