@@ -134,15 +134,30 @@ function App() {
     if (phase === 'idle' || phase === 'complete') return
     if (!sessionConfig) return
 
+    const devMode = import.meta.env.VITE_DEV_MODE === 'true'
+    const devSeconds = parseInt(import.meta.env.VITE_DEV_MEDITATION_SECONDS || '30', 10)
+    let devTimeout: number | null = null
+
     const runPhase = async () => {
       try {
         if (phase === 'meditation') {
-          timerControls.start(sessionConfig.meditationMinutes)
+          const minutes = devMode ? devSeconds / 60 : sessionConfig.meditationMinutes
+          timerControls.start(minutes)
           return
         }
 
         const audioFile = getAudioForPhase(phase, sessionConfig)
         if (audioFile) {
+          // In dev mode, set a timeout to skip after devSeconds
+          if (devMode) {
+            devTimeout = window.setTimeout(() => {
+              audioControls.stop()
+              if (phaseRef.current === phase) {
+                setPhase(getNextPhase(phase, sessionConfig))
+              }
+            }, devSeconds * 1000)
+          }
+
           await audioControls.play(audioFile)
         }
 
@@ -160,6 +175,12 @@ function App() {
     }
 
     runPhase()
+
+    return () => {
+      if (devTimeout) {
+        clearTimeout(devTimeout)
+      }
+    }
   }, [phase, sessionConfig, audioControls, timerControls])
 
   const isSessionActive = phase !== 'idle' && phase !== 'complete'
