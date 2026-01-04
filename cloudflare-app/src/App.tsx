@@ -158,8 +158,9 @@ function App() {
             }, devSeconds * 1000)
           }
 
-          // Fade in over 30s for intro chanting
-          const playOptions = phase === 'intro' ? { fadeInSeconds: 30 } : undefined
+          // Fade in over 30s for intro and outro chanting
+          const fadeInPhases = ['intro', 'outro_chanting']
+          const playOptions = fadeInPhases.includes(phase) ? { fadeInSeconds: 30 } : undefined
           await audioControls.play(audioFile, playOptions)
         }
 
