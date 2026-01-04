@@ -1,73 +1,62 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 
-interface Metadata {
-  chanting: {
-    '2min': { file: string; duration: number }[]
-    '5min': { file: string; duration: number }[]
-    '10min': { file: string; duration: number }[]
-  }
-  guided?: {
-    short: string
-    long: string
-  }
-  outro: string
-  gong: string
-}
+import type {
+  Metadata,
+  SessionMode,
+  ChantingDuration,
+  MeditationDuration,
+  InstructionType,
+  SessionPhase,
+  SessionConfig
+} from './types'
 
-type SessionMode = 'custom' | 'guided'
-type ChantingDuration = '2min' | '5min' | '10min' | 'none'
-type MeditationDuration = 20 | 30 | 60 | 90 | 120
-type InstructionType = 'short' | 'long'
+import { useWakeLock } from './hooks/useWakeLock'
+import { useAudioPlayer } from './hooks/useAudioPlayer'
+import { useMeditationTimer } from './hooks/useMeditationTimer'
 
-type SessionPhase =
-  | 'idle'
-  | 'gong'
-  | 'intro'
-  | 'meditation'
-  | 'outro_chanting'
-  | 'outro'
-  | 'guided_session'
-  | 'complete'
+import { selectChantingWithRetry } from './utils/chanting'
+import { getAudioForPhase, getNextPhase, getFirstPhase } from './utils/phase'
 
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-}
+import { SessionSetup } from './components/SessionSetup'
+import { SessionActive } from './components/SessionActive'
+import { SessionComplete } from './components/SessionComplete'
 
 function App() {
+  // Metadata
   const [metadata, setMetadata] = useState<Metadata | null>(null)
 
-  // Mode selection
+  // User settings (persisted in setup screen)
   const [sessionMode, setSessionMode] = useState<SessionMode>('custom')
-
-  // Custom session settings
   const [enableGong, setEnableGong] = useState(false)
   const [introDuration, setIntroDuration] = useState<ChantingDuration>('5min')
   const [meditationDuration, setMeditationDuration] = useState<MeditationDuration>(30)
   const [outroDuration, setOutroDuration] = useState<ChantingDuration>('5min')
-
-  // Group sitting settings
   const [instructionType, setInstructionType] = useState<InstructionType>('short')
 
   // Session state
   const [phase, setPhase] = useState<SessionPhase>('idle')
-  const [timeRemaining, setTimeRemaining] = useState(0)
-  const [currentChanting, setCurrentChanting] = useState<string | null>(null)
-  const [audioProgress, setAudioProgress] = useState({ current: 0, duration: 0 })
+  const [sessionConfig, setSessionConfig] = useState<SessionConfig | null>(null)
 
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const timerRef = useRef<number | null>(null)
+  // Refs for async callbacks
   const phaseRef = useRef<SessionPhase>('idle')
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null)
-  const meditationTimerStartedRef = useRef(false)
-
   useEffect(() => {
     phaseRef.current = phase
   }, [phase])
 
-  // Load metadata on mount
+  // Hooks
+  const { request: requestWakeLock } = useWakeLock(phase)
+  const { controls: audioControls, progress: audioProgress, timeRemaining: audioTimeRemaining } = useAudioPlayer()
+
+  const handleMeditationComplete = useCallback(() => {
+    if (phaseRef.current === 'meditation') {
+      setPhase(getNextPhase('meditation', sessionConfig))
+    }
+  }, [sessionConfig])
+
+  const { controls: timerControls, timeRemaining: meditationTimeRemaining } = useMeditationTimer(handleMeditationComplete)
+
+  // Load metadata
   useEffect(() => {
     fetch('/audio/metadata.json')
       .then(res => res.json())
@@ -75,306 +64,105 @@ function App() {
       .catch(err => console.error('Failed to load metadata:', err))
   }, [])
 
-  // Wake Lock management - keeps screen on during session
-  const requestWakeLock = useCallback(async () => {
-    if (!('wakeLock' in navigator)) {
-      console.log('Wake Lock API not supported')
+  // Prepare session config - selects all audio files upfront
+  const prepareSessionConfig = useCallback((): SessionConfig | null => {
+    let introFile: string | null = null
+    let outroFile: string | null = null
+
+    if (sessionMode === 'custom') {
+      if (introDuration !== 'none') {
+        introFile = selectChantingWithRetry(metadata, introDuration)
+        if (!introFile) {
+          console.error('No intro chanting available for', introDuration)
+          return null
+        }
+      }
+
+      if (outroDuration !== 'none') {
+        outroFile = selectChantingWithRetry(metadata, outroDuration)
+        if (!outroFile) {
+          console.error('No outro chanting available for', outroDuration)
+          return null
+        }
+      }
+    }
+
+    return {
+      mode: sessionMode,
+      enableGong,
+      introFile,
+      outroFile,
+      meditationMinutes: meditationDuration,
+      instructionType
+    }
+  }, [metadata, sessionMode, enableGong, introDuration, outroDuration, meditationDuration, instructionType])
+
+  // Start session
+  const startSession = useCallback(() => {
+    if (!metadata) return
+
+    const config = prepareSessionConfig()
+    if (!config) {
+      // Could show user error here
       return
     }
-    try {
-      wakeLockRef.current = await navigator.wakeLock.request('screen')
-      console.log('Wake Lock acquired')
-      wakeLockRef.current.addEventListener('release', () => {
-        console.log('Wake Lock released')
-      })
-    } catch (err) {
-      console.log('Wake Lock request failed:', err)
+
+    setSessionConfig(config)
+    requestWakeLock()
+    setPhase(getFirstPhase(config))
+  }, [metadata, prepareSessionConfig, requestWakeLock])
+
+  // Stop session
+  const stopSession = useCallback(() => {
+    audioControls.stop()
+    timerControls.stop()
+    setPhase('idle')
+    setSessionConfig(null)
+  }, [audioControls, timerControls])
+
+  // Skip current phase
+  const skipPhase = useCallback(() => {
+    audioControls.stop()
+    if (phase === 'meditation') {
+      timerControls.stop()
     }
-  }, [])
-
-  const releaseWakeLock = useCallback(() => {
-    if (wakeLockRef.current) {
-      wakeLockRef.current.release()
-      wakeLockRef.current = null
-    }
-  }, [])
-
-  // Re-acquire wake lock when page becomes visible again (iOS releases it on hide)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && phaseRef.current !== 'idle' && phaseRef.current !== 'complete') {
-        requestWakeLock()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
-  }, [requestWakeLock])
-
-  // Release wake lock when session completes
-  useEffect(() => {
-    if (phase === 'complete') {
-      releaseWakeLock()
-    }
-  }, [phase, releaseWakeLock])
-
-  const cleanup = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.onloadedmetadata = null
-      audioRef.current.ontimeupdate = null
-      audioRef.current.onended = null
-      audioRef.current.onerror = null
-      audioRef.current = null
-    }
-    setAudioProgress({ current: 0, duration: 0 })
-  }, [])
-
-  const playAudio = useCallback((src: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      cleanup()
-      const audio = new Audio(src)
-      audioRef.current = audio
-
-      audio.onloadedmetadata = () => {
-        setAudioProgress(prev => ({ ...prev, duration: audio.duration }))
-      }
-
-      audio.ontimeupdate = () => {
-        setAudioProgress({
-          current: audio.currentTime,
-          duration: audio.duration || 0
-        })
-      }
-
-      audio.onended = () => {
-        setAudioProgress({ current: 0, duration: 0 })
-        resolve()
-      }
-
-      audio.onerror = () => reject(new Error(`Failed to play ${src}`))
-      audio.play().catch(reject)
-    })
-  }, [cleanup])
-
-  const startMeditationTimer = useCallback(() => {
-    const totalSeconds = meditationDuration * 60
-    setTimeRemaining(totalSeconds)
-    meditationTimerStartedRef.current = true
-
-    timerRef.current = window.setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-  }, [meditationDuration])
-
-  const getRandomChanting = useCallback((duration: ChantingDuration): string | null => {
-    if (!metadata || duration === 'none') return null
-    const chantings = metadata.chanting[duration]
-    if (!chantings.length) return null
-    return chantings[Math.floor(Math.random() * chantings.length)].file
-  }, [metadata])
-
-  // Watch for timer completion
-  useEffect(() => {
-    // Only transition if timer was actually started (prevents race condition on initial render)
-    if (phase === 'meditation' && timeRemaining === 0 && meditationTimerStartedRef.current) {
-      meditationTimerStartedRef.current = false
-      if (outroDuration !== 'none') {
-        const outroChant = getRandomChanting(outroDuration)
-        setCurrentChanting(outroChant)
-        setPhase('outro_chanting')
-      } else {
-        setPhase('outro')
-      }
-    }
-  }, [phase, timeRemaining, outroDuration, getRandomChanting])
+    setPhase(getNextPhase(phase, sessionConfig))
+  }, [audioControls, timerControls, phase, sessionConfig])
 
   // Handle phase transitions
   useEffect(() => {
-    const handlePhaseTransition = async () => {
+    if (phase === 'idle' || phase === 'complete') return
+    if (!sessionConfig) return
+
+    const runPhase = async () => {
       try {
-        if (phase === 'gong') {
-          await playAudio('/audio/gong.mp3')
-          if (phaseRef.current === 'gong') {
-            if (sessionMode === 'guided') {
-              // After gong in guided mode, start the guided session
-              setPhase('guided_session')
-            } else if (introDuration !== 'none') {
-              const introChant = getRandomChanting(introDuration)
-              setCurrentChanting(introChant)
-              setPhase('intro')
-            } else {
-              setPhase('meditation')
-              startMeditationTimer()
-            }
-          }
-        } else if (phase === 'intro' && currentChanting) {
-          await playAudio(`/audio/chanting/${currentChanting}`)
-          if (phaseRef.current === 'intro') {
-            setPhase('meditation')
-            startMeditationTimer()
-          }
-        } else if (phase === 'outro_chanting') {
-          if (currentChanting) {
-            await playAudio(`/audio/chanting/${currentChanting}`)
-          }
-          // Always proceed to outro, even if no chanting was available
-          if (phaseRef.current === 'outro_chanting') {
-            setPhase('outro')
-          }
-        } else if (phase === 'outro') {
-          await playAudio('/audio/outro.webm')
-          if (phaseRef.current === 'outro') {
-            setPhase('complete')
-          }
-        } else if (phase === 'guided_session') {
-          const audioFile = instructionType === 'short'
-            ? '/audio/guided/short.mp3'
-            : '/audio/guided/long.mp3'
-          await playAudio(audioFile)
-          if (phaseRef.current === 'guided_session') {
-            setPhase('complete')
-          }
+        if (phase === 'meditation') {
+          timerControls.start(sessionConfig.meditationMinutes)
+          return
+        }
+
+        const audioFile = getAudioForPhase(phase, sessionConfig)
+        if (audioFile) {
+          await audioControls.play(audioFile)
+        }
+
+        // Check phase hasn't changed during playback
+        if (phaseRef.current === phase) {
+          setPhase(getNextPhase(phase, sessionConfig))
         }
       } catch (err) {
-        console.error('Playback failed:', err)
+        console.error('Phase execution failed:', err)
         // Gracefully move to next phase on error
-        if (phaseRef.current === 'gong') {
-          if (sessionMode === 'guided') {
-            setPhase('guided_session')
-          } else if (introDuration !== 'none') {
-            const introChant = getRandomChanting(introDuration)
-            setCurrentChanting(introChant)
-            setPhase('intro')
-          } else {
-            setPhase('meditation')
-            startMeditationTimer()
-          }
-        } else if (phaseRef.current === 'intro') {
-          setPhase('meditation')
-          startMeditationTimer()
-        } else if (phaseRef.current === 'outro_chanting') {
-          setPhase('outro')
-        } else if (phaseRef.current === 'outro') {
-          setPhase('complete')
-        } else if (phaseRef.current === 'guided_session') {
-          setPhase('complete')
+        if (phaseRef.current === phase) {
+          setPhase(getNextPhase(phase, sessionConfig))
         }
       }
     }
 
-    if (phase !== 'idle' && phase !== 'meditation' && phase !== 'complete') {
-      handlePhaseTransition()
-    }
-  }, [phase, currentChanting, sessionMode, introDuration, outroDuration, instructionType, playAudio, startMeditationTimer, getRandomChanting])
-
-  const startSession = () => {
-    if (!metadata) return
-
-    requestWakeLock()
-
-    if (sessionMode === 'guided') {
-      // Guided mode: optional gong → full guided session
-      if (enableGong) {
-        setPhase('gong')
-      } else {
-        setPhase('guided_session')
-      }
-    } else {
-      // Custom session mode
-      if (enableGong) {
-        setPhase('gong')
-      } else if (introDuration !== 'none') {
-        const introChant = getRandomChanting(introDuration)
-        setCurrentChanting(introChant)
-        setPhase('intro')
-      } else {
-        setPhase('meditation')
-        startMeditationTimer()
-      }
-    }
-  }
-
-  const stopSession = () => {
-    cleanup()
-    releaseWakeLock()
-    meditationTimerStartedRef.current = false
-    setPhase('idle')
-    setTimeRemaining(0)
-    setCurrentChanting(null)
-  }
-
-  // Skip functions for each phase
-  const skipGong = useCallback(() => {
-    if (phase !== 'gong') return
-    cleanup()
-    if (sessionMode === 'guided') {
-      setPhase('guided_session')
-    } else if (introDuration !== 'none') {
-      const introChant = getRandomChanting(introDuration)
-      setCurrentChanting(introChant)
-      setPhase('intro')
-    } else {
-      setPhase('meditation')
-      startMeditationTimer()
-    }
-  }, [phase, cleanup, sessionMode, introDuration, getRandomChanting, startMeditationTimer])
-
-  const skipIntro = useCallback(() => {
-    if (phase !== 'intro') return
-    cleanup()
-    setPhase('meditation')
-    startMeditationTimer()
-  }, [phase, cleanup, startMeditationTimer])
-
-  const skipMeditation = useCallback(() => {
-    if (phase !== 'meditation') return
-    cleanup()
-    if (outroDuration !== 'none') {
-      const outroChant = getRandomChanting(outroDuration)
-      setCurrentChanting(outroChant)
-      setPhase('outro_chanting')
-    } else {
-      setPhase('outro')
-    }
-  }, [phase, cleanup, outroDuration, getRandomChanting])
-
-  const skipOutroChanting = useCallback(() => {
-    if (phase !== 'outro_chanting') return
-    cleanup()
-    setPhase('outro')
-  }, [phase, cleanup])
-
-  const skipOutro = useCallback(() => {
-    if (phase !== 'outro') return
-    cleanup()
-    setPhase('complete')
-  }, [phase, cleanup])
-
-  const skipGuidedSession = useCallback(() => {
-    if (phase !== 'guided_session') return
-    cleanup()
-    setPhase('complete')
-  }, [phase, cleanup])
+    runPhase()
+  }, [phase, sessionConfig, audioControls, timerControls])
 
   const isSessionActive = phase !== 'idle' && phase !== 'complete'
-  const audioTimeRemaining = Math.max(0, Math.ceil(audioProgress.duration - audioProgress.current))
-
-  // Check available chanting options
-  const hasChanting = (dur: ChantingDuration) => {
-    if (dur === 'none') return true
-    if (!metadata) return false
-    return metadata.chanting[dur]?.length > 0
-  }
 
   return (
     <div className="app">
@@ -395,225 +183,37 @@ function App() {
       </header>
 
       {phase === 'idle' && (
-        <div className="setup">
-          {/* Mode Selector */}
-          <div className="mode-selector">
-            <button
-              className={sessionMode === 'custom' ? 'selected' : ''}
-              onClick={() => setSessionMode('custom')}
-            >
-              Custom
-            </button>
-            <button
-              className={sessionMode === 'guided' ? 'selected' : ''}
-              onClick={() => setSessionMode('guided')}
-            >
-              Guided
-            </button>
-          </div>
-
-          {/* Gong option - shared between modes */}
-          <section className="option-group">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={enableGong}
-                onChange={e => setEnableGong(e.target.checked)}
-              />
-              Play gong at start
-            </label>
-          </section>
-
-          {/* Custom mode settings */}
-          {sessionMode === 'custom' && (
-            <>
-              <section className="option-group">
-                <h2>Intro Chanting</h2>
-                <div className="button-group">
-                  <button
-                    className={introDuration === 'none' ? 'selected' : ''}
-                    onClick={() => setIntroDuration('none')}
-                  >
-                    None
-                  </button>
-                  {(['2min', '5min', '10min'] as const).map(dur => (
-                    <button
-                      key={dur}
-                      className={introDuration === dur ? 'selected' : ''}
-                      onClick={() => setIntroDuration(dur)}
-                      disabled={!hasChanting(dur)}
-                    >
-                      {dur.replace('min', ' min')}
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className="option-group">
-                <h2>Meditation Duration</h2>
-                <div className="button-group">
-                  {([20, 30, 60, 90, 120] as MeditationDuration[]).map(dur => (
-                    <button
-                      key={dur}
-                      className={meditationDuration === dur ? 'selected' : ''}
-                      onClick={() => setMeditationDuration(dur)}
-                    >
-                      {dur} min
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className="option-group">
-                <h2>Outro Chanting</h2>
-                <div className="button-group">
-                  <button
-                    className={outroDuration === 'none' ? 'selected' : ''}
-                    onClick={() => setOutroDuration('none')}
-                  >
-                    None
-                  </button>
-                  {(['2min', '5min', '10min'] as const).map(dur => (
-                    <button
-                      key={dur}
-                      className={outroDuration === dur ? 'selected' : ''}
-                      onClick={() => setOutroDuration(dur)}
-                      disabled={!hasChanting(dur)}
-                    >
-                      {dur.replace('min', ' min')}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </>
-          )}
-
-          {/* Guided mode settings */}
-          {sessionMode === 'guided' && (
-            <section className="option-group">
-              <h2>Instruction Type</h2>
-              <div className="instruction-cards">
-                <button
-                  className={`instruction-card ${instructionType === 'short' ? 'selected' : ''}`}
-                  onClick={() => setInstructionType('short')}
-                >
-                  <span className="card-title">Short Instructions</span>
-                  <span className="card-duration">~1hr 6min</span>
-                </button>
-                <button
-                  className={`instruction-card ${instructionType === 'long' ? 'selected' : ''}`}
-                  onClick={() => setInstructionType('long')}
-                >
-                  <span className="card-title">Long Instructions</span>
-                  <span className="card-duration">~1hr 5min</span>
-                </button>
-              </div>
-            </section>
-          )}
-
-          <button
-            className="start-button"
-            onClick={startSession}
-            disabled={!metadata}
-          >
-            {metadata ? 'Start Session' : 'Loading...'}
-          </button>
-        </div>
+        <SessionSetup
+          metadata={metadata}
+          sessionMode={sessionMode}
+          setSessionMode={setSessionMode}
+          enableGong={enableGong}
+          setEnableGong={setEnableGong}
+          introDuration={introDuration}
+          setIntroDuration={setIntroDuration}
+          meditationDuration={meditationDuration}
+          setMeditationDuration={setMeditationDuration}
+          outroDuration={outroDuration}
+          setOutroDuration={setOutroDuration}
+          instructionType={instructionType}
+          setInstructionType={setInstructionType}
+          onStart={startSession}
+        />
       )}
 
       {isSessionActive && (
-        <div className="session">
-          <div className="phase-indicator">
-            {phase === 'gong' && '🔔 Starting Gong'}
-            {phase === 'intro' && '🙏 Intro Chanting'}
-            {phase === 'meditation' && '🧘 Meditation'}
-            {phase === 'outro_chanting' && '🙏 Outro Chanting'}
-            {phase === 'outro' && '🙏 Closing'}
-            {phase === 'guided_session' && '🧘 Guided Session'}
-          </div>
-
-          <div className="timer">
-            {phase === 'meditation' ? (
-              <>
-                <div className="time-display">{formatTime(timeRemaining)}</div>
-                <div className="time-label">remaining</div>
-              </>
-            ) : (
-              <>
-                <div className="time-display">
-                  {audioProgress.duration > 0 ? formatTime(audioTimeRemaining) : '--:--'}
-                </div>
-                <div className="time-label">
-                  {phase === 'gong' && 'gong'}
-                  {phase === 'intro' && 'intro remaining'}
-                  {phase === 'outro_chanting' && 'outro remaining'}
-                  {phase === 'outro' && 'closing'}
-                  {phase === 'guided_session' && 'remaining'}
-                </div>
-              </>
-            )}
-          </div>
-
-          {(phase === 'gong' || phase === 'intro' || phase === 'outro_chanting' || phase === 'outro' || phase === 'guided_session') &&
-           audioProgress.duration > 0 && (
-            <div className="progress-bar-container">
-              <div
-                className="progress-bar"
-                style={{ width: `${(audioProgress.current / audioProgress.duration) * 100}%` }}
-              />
-            </div>
-          )}
-
-          <div className="session-actions">
-            {phase === 'gong' && (
-              <button className="skip-button" onClick={skipGong}>
-                Skip Gong →
-              </button>
-            )}
-            {phase === 'intro' && (
-              <button className="skip-button" onClick={skipIntro}>
-                Skip to Meditation →
-              </button>
-            )}
-            {phase === 'meditation' && (
-              <button className="skip-button" onClick={skipMeditation}>
-                End Meditation →
-              </button>
-            )}
-            {phase === 'outro_chanting' && (
-              <button className="skip-button" onClick={skipOutroChanting}>
-                Skip to Closing →
-              </button>
-            )}
-            {phase === 'outro' && (
-              <button className="skip-button" onClick={skipOutro}>
-                Skip Closing →
-              </button>
-            )}
-            {phase === 'guided_session' && (
-              <button className="skip-button" onClick={skipGuidedSession}>
-                End Session →
-              </button>
-            )}
-            <button className="stop-button" onClick={stopSession}>
-              Stop Session
-            </button>
-          </div>
-        </div>
+        <SessionActive
+          phase={phase}
+          meditationTimeRemaining={meditationTimeRemaining}
+          audioProgress={audioProgress}
+          audioTimeRemaining={audioTimeRemaining}
+          onSkip={skipPhase}
+          onStop={stopSession}
+        />
       )}
 
       {phase === 'complete' && (
-        <div className="complete">
-          <div className="complete-message">
-            <span className="complete-icon">✨</span>
-            <h2>Session Complete</h2>
-            <p>Bhavatu Sabba Mangalam</p>
-            <p className="translation">May all beings be happy</p>
-          </div>
-          <button className="start-button" onClick={() => setPhase('idle')}>
-            New Session
-          </button>
-        </div>
+        <SessionComplete onNewSession={() => setPhase('idle')} />
       )}
 
       <footer className="app-footer">
